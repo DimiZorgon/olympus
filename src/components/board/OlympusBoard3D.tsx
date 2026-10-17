@@ -1,23 +1,23 @@
 // src/components/board/OlympusBoard3D.tsx
 'use client';
 
-import React, { Suspense, useMemo } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Html, useGLTF, ContactShadows } from '@react-three/drei';
+import { OrbitControls, Html, useGLTF, ContactShadows, Text } from '@react-three/drei';
 import { HexTile, TerrainType } from '@/core/types/game.types';
 import { KAYKIT_TERRAIN_MAP, KayKitPlayerColor } from '@/core/data/kaykit.mapper';
 
-const HEX_RADIUS = 1.05;
+const HEX_RADIUS = 1.08;
 
-// Hauteur 3D par type de case (Montagnes très surélevées comme dans le guide PDF p.8)
+// Hauteur 3D par type de case (Montagnes très surélevées)
 export const TERRAIN_ELEVATION: Record<TerrainType, number> = {
-  SEA: 0.12,
-  RIVER: 0.28,
-  PLAINS: 0.38,
-  FOREST: 0.58,
-  SANCTUARY: 0.85,
-  MOUNTAIN_BRONZE: 1.25,
-  MOUNTAIN_MARBLE: 1.55,
+  SEA: 0.15,
+  RIVER: 0.32,
+  PLAINS: 0.42,
+  FOREST: 0.62,
+  SANCTUARY: 0.88,
+  MOUNTAIN_BRONZE: 1.28,
+  MOUNTAIN_MARBLE: 1.58,
 };
 
 function axialToWorld3D(q: number, r: number): [number, number] {
@@ -27,7 +27,7 @@ function axialToWorld3D(q: number, r: number): [number, number] {
 }
 
 /**
- * Pion 3D de jeu de société (Socle + Corps + Collerette + Tête sphérique)
+ * Pion 3D de jeu de société
  */
 export function Pawn3D({
   colorHex,
@@ -40,22 +40,18 @@ export function Pawn3D({
 }) {
   return (
     <group position={position} scale={scale}>
-      {/* Socle */}
       <mesh position={[0, 0.06, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.26, 0.3, 0.12, 20]} />
         <meshStandardMaterial color={colorHex} roughness={0.35} metalness={0.15} />
       </mesh>
-      {/* Colonne centrale */}
       <mesh position={[0, 0.28, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.12, 0.22, 0.36, 20]} />
         <meshStandardMaterial color={colorHex} roughness={0.35} metalness={0.15} />
       </mesh>
-      {/* Collerette */}
       <mesh position={[0, 0.46, 0]} castShadow>
         <cylinderGeometry args={[0.18, 0.18, 0.05, 20]} />
         <meshStandardMaterial color={colorHex} roughness={0.3} metalness={0.2} />
       </mesh>
-      {/* Tête sphérique */}
       <mesh position={[0, 0.62, 0]} castShadow>
         <sphereGeometry args={[0.17, 24, 24]} />
         <meshStandardMaterial color={colorHex} roughness={0.25} metalness={0.2} />
@@ -64,9 +60,6 @@ export function Pawn3D({
   );
 }
 
-/**
- * Chargeur optionnel de modèle .gltf KayKit (si présent dans /public/assets/gltf/...)
- */
 function KayKitModel({
   url,
   position = [0, 0, 0],
@@ -82,7 +75,7 @@ function KayKitModel({
 }
 
 /**
- * Rendu 3D d'une Tuile Hexagonale avec son élévation, son relief de montagne et son bâtiment
+ * Rendu 3D d'une Tuile Hexagonale
  */
 function HexTile3D({
   tile,
@@ -98,34 +91,44 @@ function HexTile3D({
   ownerColor?: { name: KayKitPlayerColor; hex: string };
   isPrimary: boolean;
   isSecondary: boolean;
-  isHoveredTarget: boolean;
+  isHoveredTarget?: boolean;
   useGltfAssets: boolean;
   onSelectPrimary: (coord: string) => void;
   onSelectSecondary: (coord: string) => void;
 }) {
-  const [x, z] = axialToWorld3D(tile.q, tile.r);
-  const height = TERRAIN_ELEVATION[tile.terrain] || 0.4;
+  const [hovered, setHovered] = useState(false);
+  const [x, z] = useMemo(() => axialToWorld3D(tile.q, tile.r), [tile.q, tile.r]);
   const info = KAYKIT_TERRAIN_MAP[tile.terrain];
+  const height = TERRAIN_ELEVATION[tile.terrain] || 0.4;
 
-  const borderColor = isPrimary || isHoveredTarget
-    ? '#F59E0B'
+  const borderColor = isPrimary
+    ? '#F59E0B' // Or vif Case 1
     : isSecondary
-    ? '#06B6D4'
+    ? '#A855F7' // Pourpre Case 2 (Temple)
+    : isHoveredTarget || hovered
+    ? '#FFFFFF' // Blanc survol
     : ownerColor
     ? ownerColor.hex
-    : info.strokeColor;
+    : '#7E6139';
 
-  // Chemins exacts vers tes fichiers Assets/gltf du tree.txt
+  const showTooltip = isPrimary || isSecondary || isHoveredTarget || hovered;
+
   const baseTileUrl =
     tile.terrain === 'SEA'
-      ? '/assets/gltf/tiles/base/hex_water.gltf'
+      ? '/assets/gltf/tiles/water/hex_water.gltf'
       : tile.terrain === 'RIVER'
       ? '/assets/gltf/tiles/rivers/hex_river_A.gltf'
+      : tile.terrain === 'FOREST'
+      ? '/assets/gltf/tiles/nature/hex_forest.gltf'
+      : tile.terrain === 'MOUNTAIN_MARBLE'
+      ? '/assets/gltf/tiles/nature/hex_rock.gltf'
+      : tile.terrain === 'MOUNTAIN_BRONZE'
+      ? '/assets/gltf/tiles/nature/hex_rock_dirt.gltf'
       : '/assets/gltf/tiles/base/hex_grass.gltf';
 
   const natureDecorUrl =
     tile.terrain === 'MOUNTAIN_MARBLE'
-      ? '/assets/gltf/decoration/nature/hills_B.gltf'
+      ? '/assets/gltf/decoration/nature/rock_large_A.gltf'
       : tile.terrain === 'MOUNTAIN_BRONZE'
       ? '/assets/gltf/decoration/nature/hill_single_C.gltf'
       : tile.terrain === 'FOREST'
@@ -140,6 +143,7 @@ function HexTile3D({
   return (
     <group
       position={[x, 0, z]}
+      scale={hovered ? [1.03, 1.03, 1.03] : [1, 1, 1]}
       onClick={(e) => {
         e.stopPropagation();
         onSelectPrimary(tile.coord);
@@ -148,8 +152,13 @@ function HexTile3D({
         e.stopPropagation();
         onSelectSecondary(tile.coord);
       }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
     >
-      {/* 1. Socle d'élévation (hex_grass_bottom étiré en Y pour les montagnes ou cylindre hexagonal) */}
+      {/* 1. Socle d'élévation */}
       {useGltfAssets ? (
         <Suspense fallback={null}>
           {height > 0.45 && (
@@ -169,13 +178,17 @@ function HexTile3D({
         </Suspense>
       ) : (
         <>
-          {/* Corps 3D de la tuile avec hauteur réelle (Montagnes hautes, Plaines basses, Mer creuse) */}
+          {/* Corps 3D de la tuile */}
           <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
             <cylinderGeometry args={[HEX_RADIUS * 0.96, HEX_RADIUS * 0.98, height, 6]} />
-            <meshStandardMaterial color={info.fillColor} roughness={0.65} />
+            <meshStandardMaterial
+              color={info.fillColor}
+              roughness={0.65}
+              emissive={hovered ? '#443311' : '#000000'}
+            />
           </mesh>
 
-          {/* Relief 3D de Montagne si case Montagne sans bâtiment */}
+          {/* Relief de Montagne */}
           {(tile.terrain === 'MOUNTAIN_MARBLE' || tile.terrain === 'MOUNTAIN_BRONZE') &&
             !tile.building && (
               <group position={[0, height, 0]}>
@@ -196,7 +209,7 @@ function HexTile3D({
               </group>
             )}
 
-          {/* Arbres 3D si case Forêt sans bâtiment */}
+          {/* Arbres si Forêt */}
           {tile.terrain === 'FOREST' && !tile.building && (
             <group position={[-0.22, height, -0.15]}>
               <mesh position={[0, 0.22, 0]} castShadow>
@@ -210,7 +223,7 @@ function HexTile3D({
             </group>
           )}
 
-          {/* Bâtiment ou Temple 3D */}
+          {/* Bâtiment ou Temple */}
           {tile.building && (
             <group position={[0, height, 0]}>
               <mesh position={[0, 0.25, 0]} castShadow>
@@ -228,17 +241,30 @@ function HexTile3D({
         </>
       )}
 
-      {/* Anneau de frontière / sélection au sommet de l'hexagone */}
-      <mesh position={[0, height + 0.01, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 6]}>
+      {/* Anneau de sélection / bordure au sommet */}
+      <mesh position={[0, height + 0.015, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 6]}>
         <ringGeometry
           args={[
-            HEX_RADIUS * (isPrimary || isSecondary || isHoveredTarget ? 0.82 : 0.88),
+            HEX_RADIUS * (isPrimary || isSecondary || isHoveredTarget || hovered ? 0.8 : 0.89),
             HEX_RADIUS * 0.97,
             6,
           ]}
         />
         <meshBasicMaterial color={borderColor} />
       </mesh>
+
+      {/* Coordonnée 3D WebGL native (0 React root, 0 unmount crash) */}
+      <Text
+        position={[0, height + 0.02, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        fontSize={0.28}
+        color={ownerColor ? '#FFFFFF' : '#3E2A12'}
+        anchorX="center"
+        anchorY="middle"
+        font={undefined}
+      >
+        {tile.coord}
+      </Text>
 
       {/* Pion 3D du joueur propriétaire */}
       {ownerColor && (
@@ -249,19 +275,26 @@ function HexTile3D({
         />
       )}
 
-      {/* Étiquette flottante (Coordonnée + Ressource / Bâtiment) */}
-      <Html position={[0, height + 0.45, 0]} center distanceFactor={14}>
-        <div className="pointer-events-none flex flex-col items-center">
-          <span className="px-1.5 py-0.5 rounded bg-[#463217]/85 text-[#F6F5DF] text-[10px] font-bold whitespace-nowrap shadow">
-            {tile.coord} {info.icon}
-          </span>
-          {tile.building && (
-            <span className="mt-0.5 px-1.5 py-0.5 rounded bg-amber-600 text-white text-[9px] font-extrabold whitespace-nowrap shadow">
-              🏛️ +{tile.building.power}P
+      {/* Étiquette flottante conditionnelle (uniquement au survol ou sélection) */}
+      {showTooltip && (
+        <Html position={[0, height + 0.6, 0]} center distanceFactor={12}>
+          <div className="pointer-events-none flex flex-col items-center bg-[#463217]/95 border-2 border-amber-400 text-[#F6F5DF] rounded-xl px-2.5 py-1 shadow-2xl backdrop-blur-sm whitespace-nowrap z-50">
+            <span className="text-[11px] font-black">
+              {tile.coord} • {info.label} {info.icon}
             </span>
-          )}
-        </div>
-      </Html>
+            {tile.building && (
+              <span className="text-[10px] font-bold text-amber-300">
+                🏛️ {tile.building.name} (+{tile.building.power}P)
+              </span>
+            )}
+            {ownerColor && (
+              <span className="text-[9px] font-medium text-emerald-300">
+                Cité de {ownerColor.name}
+              </span>
+            )}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
@@ -287,17 +320,17 @@ export default function OlympusBoard3D({
 }) {
   return (
     <div className="w-full h-full relative">
-      <Canvas shadows camera={{ position: [0, 12.5, 11.5], fov: 42 }}>
-        <ambientLight intensity={0.75} />
+      <Canvas shadows camera={{ position: [0, 13, 11], fov: 40 }}>
+        <ambientLight intensity={0.8} />
         <directionalLight
           castShadow
-          position={[10, 18, 8]}
-          intensity={1.35}
+          position={[12, 22, 10]}
+          intensity={1.4}
           shadow-mapSize-width={2048}
           shadow-mapSize-height={2048}
         />
 
-        <group position={[0, -0.5, 0]}>
+        <group position={[0, -0.4, 0]}>
           {tiles.map((tile) => (
             <HexTile3D
               key={tile.coord}
@@ -313,14 +346,14 @@ export default function OlympusBoard3D({
           ))}
         </group>
 
-        <ContactShadows position={[0, -0.52, 0]} opacity={0.4} scale={30} blur={2} far={10} />
+        <ContactShadows position={[0, -0.42, 0]} opacity={0.35} scale={32} blur={2.5} far={12} />
         <OrbitControls
           enablePan
           enableZoom
           enableRotate
-          maxPolarAngle={Math.PI / 2.25}
-          minDistance={5}
-          maxDistance={24}
+          maxPolarAngle={Math.PI / 2.3}
+          minDistance={4}
+          maxDistance={25}
         />
       </Canvas>
     </div>

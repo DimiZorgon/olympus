@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
 import {
   CardDefinition,
   GamePublicState,
@@ -11,7 +10,7 @@ import {
 } from '@/core/types/game.types';
 import { MAJOR_GODS_CATALOG } from '@/core/data/cards.catalog';
 import { PLAYER_COLORS } from '@/core/data/kaykit.mapper';
-import OlympusBoard3D, { Pawn3D } from '@/components/board/OlympusBoard3D';
+import OlympusBoard3D from '@/components/board/OlympusBoard3D';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +20,7 @@ const CATEGORY_BADGES: Record<string, { label: string; bg: string }> = {
   BUILDING: { label: 'Bâtiment', bg: 'bg-blue-700 text-white' },
   SECONDARY_GOD: { label: 'Dieu', bg: 'bg-purple-800 text-white' },
   SPECIAL_RESOURCE: { label: 'Ressource', bg: 'bg-amber-900 text-white' },
-  INHABITANT: { label: 'Habitant', bg: 'bg-yellow-700 text-white' },
+  INHABITANT: { label: 'Habitant', bg: 'bg-stone-700 text-white' },
   BONUS: { label: 'Bonus', bg: 'bg-slate-700 text-white' },
   MALUS: { label: 'Malus', bg: 'bg-rose-700 text-white' },
 };
@@ -80,12 +79,18 @@ export default function OlympusTabletopPage() {
         setCatalog(data.catalog);
 
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
-        const { data: g } = await supabase.from('games').select('*').eq('id', data.gameId).single();
-        setGame(g);
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const key =
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+          '';
+
+        if (url && key) {
+          const supabase = createClient(url, key);
+          const { data: g } = await supabase.from('games').select('*').eq('id', data.gameId).single();
+          if (g) setGame(g);
+        }
+
         setMyHandIds(Object.keys(data.catalog).slice(0, 12));
         setMyReserveIds([]);
         setLogs(['🎲 Plateau mis en place. Choisissez 2 cartes de votre éventail.']);
@@ -189,8 +194,8 @@ export default function OlympusTabletopPage() {
       const data = await res.json();
       if (data.status === 'TURN_RESOLVED') {
         setGame(data.game);
-        setMyHandIds(data.myHand);
-        setMyReserveIds(data.myReserve);
+        setMyHandIds(data.myHand || []);
+        setMyReserveIds(data.myReserve || []);
         setLogs((prev) => [...data.events, ...prev]);
         setPickedIds([]);
         setCommands([]);
@@ -243,7 +248,7 @@ export default function OlympusTabletopPage() {
                 onChange={(e) => setUseGltfAssets(e.target.checked)}
                 className="h-4 w-4 accent-[#684C26]"
               />
-              Charger les fichiers .gltf KayKit depuis /public/assets/gltf/
+              Activer les modèles 3D KayKit (.gltf)
             </label>
           </div>
 
@@ -261,58 +266,50 @@ export default function OlympusTabletopPage() {
 
   return (
     <div className="h-screen w-screen tabletop-surface relative overflow-hidden flex flex-col justify-between">
-      {/* 1. HAUT DE LA TABLE : ADVERSAIRES, TOUR & GRANDS TEMPLES */}
-      <header className="z-20 px-6 pt-3 flex justify-between items-start pointer-events-none">
-        {/* Indicateur de Manche & Journal compact */}
-        <div className="boardgame-panel rounded-xl px-4 py-2.5 pointer-events-auto flex flex-col gap-1 max-w-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-black text-[#684C26]">🏛️ OLYMPUS</span>
-            <Badge className="bg-[#684C26] text-[#F6F5DF]">
-              Manche {game.current_round}/3 • Tour {game.current_turn}/6
-            </Badge>
-          </div>
-          <div className="text-[11px] text-[#463217]/90 truncate">
-            {logs[0] || 'Sélectionnez 2 cartes dans votre éventail.'}
-          </div>
+      {/* 1. HAUT DE LA TABLE : HUD FLOTTANT COMPACT */}
+      <header className="z-20 px-4 pt-3 flex flex-wrap justify-between items-start gap-3 pointer-events-none">
+        {/* Titre, Manche & Journal */}
+        <div className="boardgame-panel rounded-xl px-4 py-2 pointer-events-auto flex items-center gap-3 shadow-md">
+          <span className="text-base font-black text-[#684C26]">🏛️ OLYMPUS</span>
+          <Badge className="bg-[#684C26] text-[#F6F5DF] text-xs">
+            M{game.current_round}/3 • T{game.current_turn}/6
+          </Badge>
+          <span className="text-xs text-[#463217]/90 max-w-[200px] truncate border-l border-[#684C26]/30 pl-2">
+            {logs[0] || 'Choisissez 2 cartes.'}
+          </span>
         </div>
 
-        {/* Cartes des Joueurs autour de la table */}
-        <div className="flex gap-3 pointer-events-auto">
+        {/* Joueurs de la table */}
+        <div className="flex flex-wrap gap-2 pointer-events-auto">
           {Object.values(game.players_public).map((p) => {
             const c = playerColorMap[p.id];
             const isMe = p.id === playerId;
             return (
               <div
                 key={p.id}
-                className={`boardgame-panel rounded-xl px-3.5 py-2 flex items-center gap-3 ${
+                className={`boardgame-panel rounded-xl px-3 py-1.5 flex items-center gap-2.5 text-xs shadow-md ${
                   isMe ? 'ring-2 ring-amber-500' : ''
                 }`}
               >
                 <span
-                  className="w-3.5 h-3.5 rounded-full border border-white shadow"
+                  className="w-3 h-3 rounded-full border border-white shrink-0"
                   style={{ backgroundColor: c?.hex }}
                 />
-                <div className="text-xs">
-                  <div className="font-bold text-[#463217]">
+                <div>
+                  <div className="font-bold text-[#463217] leading-none">
                     {p.name} {isMe && '(Vous)'}
                   </div>
-                  <div className="flex gap-2 text-[11px] font-semibold text-[#684C26]">
-                    <span>🪙 {p.drachmas}</span>
-                    <span>⚡ {p.olympusFavor} Fav.</span>
-                    <span>🏗️ {p.reserveCount}</span>
+                  <div className="text-[10px] text-[#684C26] font-semibold mt-0.5">
+                    🪙 {p.drachmas} | ⚡ {p.olympusFavor} | 🏆 <strong>{p.totalScore} PV</strong>
                   </div>
-                </div>
-                <div className="pl-2 border-l border-[#684C26]/30 text-right">
-                  <div className="text-[9px] uppercase font-bold text-[#684C26]">Gloire</div>
-                  <div className="text-sm font-black text-[#463217]">{p.totalScore} PV</div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Les 3 Grands Temples sur le bord du plateau */}
-        <div className="boardgame-panel rounded-xl p-2.5 pointer-events-auto flex gap-2">
+        {/* Grands Temples */}
+        <div className="boardgame-panel rounded-xl p-2 pointer-events-auto flex gap-1.5 shadow-md">
           {(['ZEUS', 'POSEIDON', 'HADES'] as MajorGodId[]).map((gId) => {
             if (gId === 'POSEIDON' && game.player_count < 3) return null;
             if (gId === 'HADES' && game.player_count < 4) return null;
@@ -321,21 +318,18 @@ export default function OlympusTabletopPage() {
             return (
               <div
                 key={gId}
-                className="bg-[#F6F5DF] border border-[#684C26]/50 rounded-lg p-2 w-40 text-[11px] flex flex-col justify-between"
+                className="bg-[#F6F5DF] border border-[#684C26]/50 rounded-lg px-2.5 py-1 text-[11px] flex flex-col items-center justify-between"
               >
-                <div>
-                  <div className="font-extrabold text-[#684C26] truncate">{def.name}</div>
-                  <div className="text-[10px] text-[#463217]/80 line-clamp-2">{def.description}</div>
-                </div>
+                <span className="font-bold text-[#684C26]">{def.name.replace('Grand Temple de ', '')}</span>
                 {st.available ? (
                   <button
                     onClick={() => handleClaimMajorGod(gId)}
-                    className="mt-1.5 w-full bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-bold py-1 rounded text-[10px] cursor-pointer"
+                    className="mt-1 bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-bold px-2 py-0.5 rounded text-[9px] cursor-pointer"
                   >
-                    Ériger [{primaryCoord || '?'}]+[{secondaryCoord || '?'}]
+                    Bâtir [{primaryCoord || '?'}+{secondaryCoord || '?'}]
                   </button>
                 ) : (
-                  <span className="mt-1 text-[10px] font-bold text-amber-800">⚡ Déjà Bâti</span>
+                  <span className="text-[9px] font-bold text-amber-800">⚡ Érigé</span>
                 )}
               </div>
             );
@@ -343,7 +337,7 @@ export default function OlympusTabletopPage() {
         </div>
       </header>
 
-      {/* 2. CENTRE : PLATEAU 3D PLEIN ÉCRAN AVEC RELIEF DES MONTAGNES */}
+      {/* 2. CENTRE : PLATEAU 3D PLEIN ÉCRAN */}
       <div className="absolute inset-0 z-0">
         <OlympusBoard3D
           tiles={game.board_tiles}
@@ -357,58 +351,46 @@ export default function OlympusTabletopPage() {
         />
       </div>
 
-      {/* 3. BAS DE LA TABLE : PIÈCES & PIONS 3D (GAUCHE) + DECK EN ÉVENTAIL (CENTRE) + CARTES GARDÉES (DROITE) */}
-      <footer className="z-20 px-6 pb-3 flex items-end justify-between pointer-events-none">
-        {/* GAUCHE DU DECK : BOURSE DE PIÈCES (DRACHMES) + PIONS 3D DU JOUEUR */}
-        <div className="boardgame-panel rounded-2xl p-3.5 pointer-events-auto flex items-center gap-4 w-80">
-          {/* Aperçu 3D en temps réel de votre Pion de Citoyen */}
-          <div className="w-20 h-24 bg-[#e8e5c3] rounded-xl border border-[#684C26]/40 relative overflow-hidden shrink-0">
-            <Canvas shadows camera={{ position: [0, 1.1, 1.8], fov: 38 }}>
-              <ambientLight intensity={0.8} />
-              <directionalLight position={[3, 5, 3]} intensity={1.2} />
-              <Pawn3D colorHex={myColor.hex} position={[0, -0.32, 0]} scale={1.1} />
-            </Canvas>
-            <span className="absolute bottom-1 inset-x-0 text-center text-[9px] font-extrabold text-[#463217]">
-              {myControlledTilesCount} Pions posés
-            </span>
+      {/* 3. BAS DE LA TABLE : BOURSE + ÉVENTAIL + VALIDATION */}
+      <footer className="z-20 px-6 pb-4 flex flex-wrap items-end justify-between gap-4 pointer-events-none">
+        {/* GAUCHE : BOURSE DU JOUEUR */}
+        <div className="boardgame-panel rounded-2xl p-3 pointer-events-auto w-64 shadow-xl space-y-1.5">
+          <div className="flex items-center gap-2.5">
+            <div className="drachma-coin flex items-center justify-center font-black text-sm text-[#463217] shrink-0">
+              🪙
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase text-[#684C26] leading-none">
+                Trésor personnel
+              </div>
+              <div className="text-base font-black text-[#463217]">
+                {myPlayer?.drachmas ?? 10} Drachmes
+              </div>
+            </div>
           </div>
 
-          {/* Pièces d'or (Drachmes) & Faveur Divine */}
-          <div className="space-y-2 flex-1">
-            <div className="flex items-center gap-2.5">
-              <div className="drachma-coin flex items-center justify-center font-black text-xs text-[#463217]">
-                🪙
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase text-[#684C26]">Trésorerie</div>
-                <div className="text-lg font-black text-[#463217]">
-                  {myPlayer?.drachmas ?? 10} Drachmes
-                </div>
-              </div>
-            </div>
+          <div className="flex justify-between items-center text-xs bg-[#e8e5c3] px-2 py-0.5 rounded border border-[#684C26]/20">
+            <span className="font-semibold text-[#684C26]">Faveur Divine :</span>
+            <span className="font-black text-amber-800">{myPlayer?.olympusFavor ?? 0}</span>
+          </div>
 
-            <div className="flex justify-between items-center text-xs bg-[#e8e5c3] px-2.5 py-1 rounded-lg border border-[#684C26]/30">
-              <span className="font-bold text-[#684C26]">⚡ Faveur Divine :</span>
-              <span className="font-black text-amber-700">{myPlayer?.olympusFavor ?? 0}</span>
-            </div>
-
-            <div className="text-[10px] font-semibold text-[#684C26]">
-              🎯 Case cible : <strong>{primaryCoord || 'Cliquez sur une tuile'}</strong>
-            </div>
+          <div className="text-[10px] font-bold text-[#684C26] truncate">
+            🎯 Cible : <strong>{primaryCoord || 'Cliquez une case'}</strong>
+            {secondaryCoord && ` | 2e : ${secondaryCoord}`}
           </div>
         </div>
 
-        {/* CENTRE : MAIN DE CARTES EN ÉVENTAIL (DECK COURBÉ) */}
+        {/* CENTRE : ÉVENTAIL DE CARTES */}
         <div className="card-fan-wrapper pointer-events-auto flex flex-col items-center">
-          <div className="flex items-center justify-center h-56 px-8">
+          <div className="flex items-center justify-center h-52 px-6">
             {myHandIds.map((cid, index) => {
               const card = catalog[cid];
               if (!card) return null;
               const total = myHandIds.length;
               const middle = (total - 1) / 2;
               const offset = index - middle;
-              const rotateDeg = offset * 4.2;
-              const translateY = Math.abs(offset) * 5;
+              const rotateDeg = offset * 3.8;
+              const translateY = Math.abs(offset) * 4;
               const isPicked = pickedIds.includes(cid);
               const badge = CATEGORY_BADGES[card.category] || CATEGORY_BADGES.BUILDING;
 
@@ -418,49 +400,40 @@ export default function OlympusTabletopPage() {
                   onMouseEnter={() => setHoveredCard(card)}
                   onMouseLeave={() => setHoveredCard(null)}
                   style={{
-                    transform: `translateY(${ isPicked ? -28 : translateY }px) rotate(${rotateDeg}deg)`,
-                    marginLeft: index === 0 ? 0 : '-52px',
+                    transform: `translateY(${isPicked ? -24 : translateY}px) rotate(${rotateDeg}deg)`,
+                    marginLeft: index === 0 ? 0 : '-48px',
                     zIndex: isPicked ? 40 : index + 1,
                   }}
-                  className={`playing-card p-2.5 flex flex-col justify-between ${
+                  className={`playing-card p-2 flex flex-col justify-between ${
                     isPicked ? 'is-picked' : ''
                   }`}
                 >
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${badge.bg}`}>
+                      <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded ${badge.bg}`}>
                         {badge.label}
                       </span>
                       {card.power > 0 && (
-                        <span className="text-[10px] font-black text-[#684C26]">
+                        <span className="text-[9px] font-black text-[#684C26]">
                           +{card.power}P
                         </span>
                       )}
                     </div>
-                    <div className="font-extrabold text-xs text-[#463217] leading-tight mb-1">
+                    <div className="font-extrabold text-[11px] text-[#463217] leading-tight mb-1 truncate">
                       {card.name}
                     </div>
-                    <p className="text-[10px] text-[#463217]/85 leading-snug line-clamp-3">
+                    <p className="text-[9px] text-[#463217]/85 leading-snug line-clamp-3">
                       {card.description}
                     </p>
                   </div>
 
-                  {/* Boutons d'action de la carte */}
-                  <div className="space-y-1 pt-1.5 border-t border-[#684C26]/25">
-                    <div className="text-[9px] font-bold text-[#684C26] truncate">
-                      Coût :{' '}
-                      {Object.keys(card.cost).length > 0
-                        ? Object.entries(card.cost)
-                            .map(([k, v]) => `${v} ${k}`)
-                            .join(', ')
-                        : 'Gratuit'}
-                    </div>
+                  <div className="space-y-1 pt-1 border-t border-[#684C26]/20">
                     <div className="flex gap-1">
                       <button
                         onClick={() => handleCardAction(card, false, 'PLAY')}
-                        className="flex-1 bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-bold py-1 rounded text-[10px] cursor-pointer"
+                        className="flex-1 bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-bold py-0.5 rounded text-[9px] cursor-pointer"
                       >
-                        {card.targetCoord ? `Poser ${card.targetCoord}` : 'Jouer'}
+                        {card.targetCoord ? `Poser` : 'Jouer'}
                       </button>
                       {(card.category === 'BUILDING' ||
                         card.category === 'SECONDARY_GOD' ||
@@ -468,14 +441,14 @@ export default function OlympusTabletopPage() {
                         card.category === 'INHABITANT') && (
                         <button
                           onClick={() => handleCardAction(card, false, 'RESERVE')}
-                          className="bg-[#e8e5c3] hover:bg-[#d8d3a8] text-[#463217] border border-[#684C26] font-bold px-1.5 py-1 rounded text-[9px] cursor-pointer"
+                          className="bg-[#e8e5c3] hover:bg-[#d8d3a8] text-[#463217] border border-[#684C26] font-bold px-1.5 py-0.5 rounded text-[8px] cursor-pointer"
                         >
                           Garder
                         </button>
                       )}
                       <button
                         onClick={() => handleCardAction(card, false, 'DISCARD')}
-                        className="bg-amber-200 hover:bg-amber-300 text-[#463217] font-bold px-1.5 py-1 rounded text-[9px] cursor-pointer"
+                        className="bg-amber-200 hover:bg-amber-300 text-[#463217] font-bold px-1.5 py-0.5 rounded text-[8px] cursor-pointer"
                       >
                         +3🪙
                       </button>
@@ -487,19 +460,19 @@ export default function OlympusTabletopPage() {
           </div>
         </div>
 
-        {/* DROITE DU DECK : CARTES GARDÉES (CHANTIER) + VALIDATION DU TOUR */}
-        <div className="boardgame-panel rounded-2xl p-3.5 pointer-events-auto w-80 flex flex-col gap-2.5">
-          <div className="flex justify-between items-center border-b border-[#684C26]/25 pb-1">
-            <span className="text-xs font-extrabold uppercase text-[#684C26]">
-              🏗️ Cartes Gardées ({myReserveIds.length})
+        {/* DROITE : CHANTIER & VALIDATION */}
+        <div className="boardgame-panel rounded-2xl p-3 pointer-events-auto w-64 shadow-xl flex flex-col gap-2">
+          <div className="flex justify-between items-center border-b border-[#684C26]/20 pb-1">
+            <span className="text-[11px] font-extrabold uppercase text-[#684C26]">
+              🏗️ Chantier ({myReserveIds.length})
             </span>
-            <span className="text-[10px] font-bold text-amber-800">5🪙 fin Tour 6</span>
+            <span className="text-[9px] font-bold text-amber-800">5🪙 fin T6</span>
           </div>
 
-          <div className="flex gap-1.5 overflow-x-auto min-h-[68px] items-center">
+          <div className="flex gap-1 overflow-x-auto min-h-[50px] items-center">
             {myReserveIds.length === 0 ? (
-              <span className="text-[11px] italic text-[#684C26]/75">
-                Aucune carte gardée sur votre tapis.
+              <span className="text-[10px] italic text-[#684C26]/75">
+                Aucune carte en réserve.
               </span>
             ) : (
               myReserveIds.map((cid) => {
@@ -508,12 +481,12 @@ export default function OlympusTabletopPage() {
                 return (
                   <div
                     key={cid}
-                    className="bg-[#F6F5DF] border border-[#684C26] rounded-lg p-1.5 min-w-[115px] text-[10px] flex flex-col justify-between"
+                    className="bg-[#F6F5DF] border border-[#684C26] rounded-lg p-1 min-w-[90px] text-[9px] flex flex-col justify-between"
                   >
                     <div className="font-bold truncate text-[#463217]">{c.name}</div>
                     <button
                       onClick={() => handleCardAction(c, true, 'PLAY')}
-                      className="mt-1 bg-[#684C26] text-[#F6F5DF] font-bold py-0.5 rounded text-[9px] cursor-pointer"
+                      className="mt-0.5 bg-[#684C26] text-[#F6F5DF] font-bold py-0.5 rounded text-[8px] cursor-pointer"
                     >
                       Bâtir [{primaryCoord || '?'}]
                     </button>
@@ -523,7 +496,7 @@ export default function OlympusTabletopPage() {
             )}
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-1.5 pt-0.5">
             <Button
               variant="outline"
               size="sm"
@@ -532,7 +505,7 @@ export default function OlympusTabletopPage() {
                 setCommands([]);
               }}
               disabled={pickedIds.length === 0}
-              className="border-[#684C26] text-[#684C26] text-xs cursor-pointer"
+              className="border-[#684C26] text-[#684C26] text-[10px] h-7 px-2 cursor-pointer"
             >
               Annuler ({pickedIds.length}/2)
             </Button>
@@ -540,9 +513,9 @@ export default function OlympusTabletopPage() {
               size="sm"
               onClick={handleValidateTurn}
               disabled={pickedIds.length !== 2 || loading}
-              className="flex-1 bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-black text-xs cursor-pointer"
+              className="flex-1 bg-[#684C26] hover:bg-[#463217] text-[#F6F5DF] font-black text-[11px] h-7 cursor-pointer"
             >
-              {loading ? 'Résolution...' : 'Valider mes 2 Cartes'}
+              {loading ? 'Résolution...' : 'Valider (2/2)'}
             </Button>
           </div>
         </div>
