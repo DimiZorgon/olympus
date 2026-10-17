@@ -15,33 +15,20 @@ export async function POST(req: Request) {
 
     const supabase = createAdminSupabaseClient();
 
-    // 1. Générer l'île procédurale (40, 55 ou 70 tuiles)
+    // 1. Générer l'île de 100 hexagones par clusters
     const tiles = generateProceduralIsland(playerCount);
 
-    // 2. Récupérer les modèles de cartes depuis Supabase (table card_templates)
-    const { data: dbTemplates, error: templatesErr } = await supabase
-      .from('card_templates')
-      .select('*');
+    // 2. Générer le deck complet de 192 cartes
+    const { allCardsMap, shuffledDeckIds } = buildScaledDeck(tiles, playerCount);
 
-    if (templatesErr) {
-      console.warn('Erreur lecture card_templates Supabase, utilisation repli :', templatesErr.message);
-    }
-
-    // 3. Générer le paquet de cartes exact (72, 108 ou 144 cartes)
-    const { allCardsMap, shuffledDeckIds } = buildScaledDeck(
-      tiles,
-      playerCount,
-      dbTemplates && dbTemplates.length > 0 ? dbTemplates : undefined
-    );
-
-    // 3. Initialiser les Dieux Majeurs selon le nombre de joueurs
+    // 3. Initialiser les 3 Dieux Majeurs
     const majorGods: Record<MajorGodId, MajorGodState> = {
       ZEUS: { available: true, ownerId: null, coords: null },
       POSEIDON: { available: playerCount >= 3, ownerId: null, coords: null },
       HADES: { available: playerCount === 4, ownerId: null, coords: null },
     };
 
-    // 4. Créer le joueur humain + remplir le reste avec des Bots
+    // 4. Initialiser les joueurs (Humain + Bots)
     const playersPublic: Record<string, PlayerPublicState> = {};
     const playerIds: string[] = [humanPlayerId];
 
@@ -79,6 +66,7 @@ export async function POST(req: Request) {
       };
     }
 
+    // Découpage en 4 manches de 12 cartes par joueur
     const cardsPerRound = playerCount * 12;
     const round1Ids = shuffledDeckIds.slice(0, cardsPerRound);
     const round2Ids = shuffledDeckIds.slice(cardsPerRound, cardsPerRound * 2);
@@ -104,14 +92,13 @@ export async function POST(req: Request) {
 
     if (gameErr) throw gameErr;
 
-    // Stocker le catalogue et les pioches des manches 2 et 3 côté serveur
     await supabase.from('game_decks').insert({
       game_id: gameRow.id,
       round_2_cards: { cards: round2Ids, catalog: allCardsMap },
       round_3_cards: round3Ids,
     });
 
-    // Distribuer 12 cartes à chaque joueur pour la Manche 1
+    // Distribution des mains
     const handRows = playerIds.map((pid, idx) => ({
       game_id: gameRow.id,
       player_id: pid,
@@ -122,10 +109,14 @@ export async function POST(req: Request) {
 
     await supabase.from('player_private_hands').insert(handRows);
 
+    // CORRECTION DU BUG : renvoyer explicitement la main du joueur humain !
+    const myHandCards = round1Ids.slice(0, 12);
+
     return NextResponse.json({
       gameId: gameRow.id,
       playerId: humanPlayerId,
       catalog: allCardsMap,
+      myHand: myHandCards,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur création partie';

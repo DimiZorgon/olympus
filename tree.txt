@@ -1,0 +1,59 @@
+src
+├── app
+│   ├── api
+│   │   └── game
+│   │       ├── afk
+│   │       │   └── route.ts
+│   │       ├── create
+│   │       │   └── route.ts
+│   │       └── submit-turn
+│   │           ├── 'route - Copy.ts'
+│   │           └── route.ts
+│   ├── favicon.ico
+│   ├── game
+│   │   └── [gameId]
+│   │       └── page.tsx
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── lobby
+│   │   └── [gameId]
+│   │       └── page.tsx
+│   └── page.tsx
+├── components
+│   ├── board
+│   │   └── OlympusBoard3D.tsx
+│   ├── DraftHand.tsx
+│   ├── EventLog.tsx
+│   ├── GameBoard.tsx
+│   ├── GameHud.tsx
+│   ├── MajorGodsPanel.tsx
+│   ├── ReservePanel.tsx
+│   └── ui
+│       ├── badge.tsx
+│       ├── button.tsx
+│       └── card.tsx
+├── core
+│   ├── bot
+│   │   └── OlympusBot.ts
+│   ├── data
+│   │   ├── cards.catalog.ts
+│   │   └── kaykit.mapper.ts
+│   ├── engine
+│   │   ├── CostCalculator.ts
+│   │   ├── ScoreCalculator.ts
+│   │   └── TurnResolver.ts
+│   ├── map
+│   │   ├── FiefAnalyzer.ts
+│   │   ├── HexMath.ts
+│   │   └── IslandGenerator.ts
+│   └── types
+│       └── game.types.ts
+├── lib
+│   └── supabase
+│       ├── admin.ts
+│       ├── client.ts
+│       ├── middleware.ts
+│       └── server.ts
+├── types
+│   └── game.types.ts
+└── utils
