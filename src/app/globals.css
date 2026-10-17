@@ -1,26 +1,79 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --khroma-beige: #f6f5df;
+  --khroma-beige-dark: #e8e5c3;
+  --khroma-dallas: #684c26;
+  --khroma-dallas-dark: #463217;
+  --khroma-gold: #d97706;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Variables shadcn/ui adaptées au thème Khroma */
+  --background: 56 54% 92%;
+  --foreground: 35 46% 18%;
+  --card: 56 54% 94%;
+  --card-foreground: 35 46% 18%;
+  --border: 35 46% 28%;
+  --primary: 35 46% 28%;
+  --primary-foreground: 56 54% 92%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--khroma-beige);
+  color: var(--khroma-dallas-dark);
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Texture de tapis de jeu de société autour du plateau 3D */
+.tabletop-surface {
+  background: radial-gradient(circle at 50% 42%, #f6f5df 0%, #dfd9b3 65%, #b89f72 100%);
+}
+
+/* Panneaux façon plateau de joueur en bois & parchemin */
+.boardgame-panel {
+  background-color: rgba(246, 245, 223, 0.94);
+  border: 2px solid var(--khroma-dallas);
+  box-shadow: 0 8px 24px rgba(70, 50, 23, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+/* Éventail de cartes (Deck en main) */
+.card-fan-wrapper {
+  perspective: 1200px;
+}
+
+.playing-card {
+  width: 156px;
+  height: 224px;
+  background: linear-gradient(180deg, #fdfcf3 0%, #f1eed0 100%);
+  border: 2px solid var(--khroma-dallas);
+  border-radius: 12px;
+  box-shadow: -4px 6px 16px rgba(0, 0, 0, 0.28);
+  transform-origin: bottom center;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s ease, z-index 0s;
+  cursor: pointer;
+}
+
+.playing-card:hover {
+  transform: translateY(-48px) scale(1.14) rotate(0deg) !important;
+  box-shadow: 0 18px 32px rgba(70, 50, 23, 0.45);
+  z-index: 50 !important;
+}
+
+.playing-card.is-picked {
+  border: 3px solid #d97706;
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+  box-shadow: 0 0 20px rgba(217, 119, 6, 0.65);
+}
+
+/* Piles de pièces (Drachmes) */
+.drachma-coin {
+  width: 38px;
+  height: 38px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 30% 30%, #fde68a, #d97706 70%, #92400e 100%);
+  border: 2px solid #78350f;
+  box-shadow: 0 4px 0 #78350f, 0 6px 10px rgba(0, 0, 0, 0.35);
 }

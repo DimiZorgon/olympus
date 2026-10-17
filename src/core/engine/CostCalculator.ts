@@ -80,7 +80,7 @@ export function computePlayerResourcePool(
 
   // 5. Calcul du taux de la Banque (Défaut = 3)
   let bankRate = 3;
-  if (player.inhabitants.includes('INH_02')) bankRate = 2; // Marchand Phénicien
+  if (player.inhabitants.some((i) => i.startsWith('INH_02'))) bankRate = 2; // Marchand Phénicien
   if (ownedTiles.some((t) => t.building?.templateId === 'GOD_06')) bankRate = 1; // Hermès
   if (ownedTiles.some((t) => t.building?.templateId === 'GOD_04')) bankRate += 1; // Malus Arès
   if (activeCapriceId === 'CAP_01') bankRate += 1; // Caprice d'Apollon
