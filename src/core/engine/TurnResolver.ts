@@ -138,6 +138,19 @@ export function resolveSimultaneousTurn(
 
         if (!targetPid || targetPid === pid) continue;
 
+        // Immunité Grand Temple d'Hadès sur la Cité ciblée
+        const targetTile = cmd.targetCoord ? tiles.find((t) => t.coord === cmd.targetCoord) : null;
+        const targetFiefs = getPlayerConnectedFiefs(tiles, targetPid);
+        const targetedFief = targetTile ? targetFiefs.find((f) => f.some((t) => t.coord === targetTile.coord)) : null;
+        const isCityProtectedByHades = targetedFief ? targetedFief.some((t) => t.building?.templateId === 'HADES') : false;
+
+        if (isCityProtectedByHades) {
+          events.push(
+            `Le Grand Temple d'Hadès protège la Cité de ${players[targetPid].name} contre ${card.name}.`
+          );
+          continue;
+        }
+
         // Protection Stratège Spartiate (max 1 malus par manche)
         if (
           players[targetPid].inhabitants.some((i) => i.startsWith('INH_05')) &&
@@ -247,6 +260,14 @@ export function resolveSimultaneousTurn(
           };
           hands[pid].reserve_card_ids = hands[pid].reserve_card_ids.filter((id) => id !== card.id);
           if (card.templateId === 'GOD_08') players[pid].olympusFavor += 2; // Aphrodite
+          if (card.templateId === 'GOD_10') {
+            // Héra : -5 Drachmes si aucun Grand Temple possédé
+            const hasMajor = Object.values(majorGods).some((g) => g.ownerId === pid);
+            if (!hasMajor) {
+              players[pid].drachmas = Math.max(0, players[pid].drachmas - 5);
+              events.push(`${players[pid].name} subit le malus d'Héra (-5 Drachmes car aucun Grand Temple).`);
+            }
+          }
           if (game.current_turn === 6 && game.active_caprice_id === 'CAP_03') {
             players[pid].totalScore += 2;
           }
@@ -376,7 +397,12 @@ export function resolveSimultaneousTurn(
       const keptIds: string[] = [];
       for (const resCardId of hands[pid].reserve_card_ids) {
         const decision = sub?.reserveCleanupDecisions?.find((d) => d.cardId === resCardId);
-        if (freeSlots > 0) {
+        if (game.active_caprice_id === 'CAP_03') {
+          // Fièvre Architecturale : conservation en Chantier totalement interdite
+          events.push(
+            `${players[pid].name} détruit 1 carte de son Chantier (Fièvre Architecturale interdit la conservation).`
+          );
+        } else if (freeSlots > 0) {
           freeSlots--;
           keptIds.push(resCardId);
         } else if (

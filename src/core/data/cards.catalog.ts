@@ -621,13 +621,112 @@ const TERRAIN_NAMES: Record<TerrainType, string> = {
   SANCTUARY: "Sanctuaire de l'Olympe (+1 Puiss.)",
 };
 
+export interface SupabaseCardTemplateRow {
+  id: string;
+  name: string;
+  category: CardDefinition['category'];
+  min_players?: number;
+  cost?: CardDefinition['cost'];
+  allowed_terrains?: TerrainType[] | null;
+  power?: number;
+  victory_points?: number;
+  duration_turns?: number | null;
+  produced_resource?: any | null;
+  description?: string;
+  bonus_text?: string | null;
+  malus_text?: string | null;
+  counts?: Record<string, number>;
+}
+
 /**
- * Construit le paquet complet et mélangé de 72 (2J), 108 (3J) ou 144 (4J) cartes.
+ * Construit le paquet complet et mélangé à partir des modèles de cartes Supabase.
  */
-export function buildScaledDeck(tiles: HexTile[], playerCount: 2 | 3 | 4): {
+export function buildScaledDeckFromTemplates(
+  tiles: HexTile[],
+  playerCount: 2 | 3 | 4,
+  templates: SupabaseCardTemplateRow[]
+): {
   allCardsMap: Record<string, CardDefinition>;
   shuffledDeckIds: string[];
 } {
+  const cards: CardDefinition[] = [];
+
+  // 1. Cartes Emplacement / Terrain (40 / 55 / 70)
+  tiles.forEach((tile, idx) => {
+    cards.push({
+      id: `TER_${idx + 1}_${tile.coord}`,
+      templateId: `TER_${tile.terrain}`,
+      name: `${tile.coord} — ${TERRAIN_NAMES[tile.terrain]}`,
+      category: 'TERRITORY',
+      minPlayers: 2,
+      cost: {},
+      targetCoord: tile.coord,
+      power: tile.terrain === 'SANCTUARY' ? 1 : 0,
+      victoryPoints: 0,
+      description: `Prenez le contrôle de l'hexagone ${tile.coord}.`,
+    });
+  });
+
+  // 2. Modèles de cartes chargés depuis Supabase
+  let serial = 1;
+  for (const t of templates) {
+    const qty = t.counts ? t.counts[playerCount] || 0 : 0;
+    if (qty <= 0) continue;
+
+    for (let i = 0; i < qty; i++) {
+      const cardId = t.category === 'SECONDARY_GOD' ? t.id : `${t.id}_${serial++}`;
+      cards.push({
+        id: cardId,
+        templateId: t.id,
+        name: t.name,
+        category: t.category,
+        minPlayers: (t.min_players || 2) as 2 | 3 | 4,
+        cost: t.cost || {},
+        allowedTerrains: t.allowed_terrains || undefined,
+        power: t.power || 0,
+        victoryPoints: t.victory_points || 0,
+        durationTurns: t.duration_turns || undefined,
+        producedResource: t.produced_resource || undefined,
+        description: t.description || '',
+        bonusText: t.bonus_text || undefined,
+        malusText: t.malus_text || undefined,
+      });
+    }
+  }
+
+  // Mélange Fisher-Yates
+  const shuffled = [...cards];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  const allCardsMap: Record<string, CardDefinition> = {};
+  for (const c of cards) {
+    allCardsMap[c.id] = c;
+  }
+
+  return {
+    allCardsMap,
+    shuffledDeckIds: shuffled.map((c) => c.id),
+  };
+}
+
+/**
+ * Construit le paquet complet et mélangé de 72 (2J), 108 (3J) ou 144 (4J) cartes.
+ */
+export function buildScaledDeck(
+  tiles: HexTile[],
+  playerCount: 2 | 3 | 4,
+  templates?: SupabaseCardTemplateRow[]
+): {
+  allCardsMap: Record<string, CardDefinition>;
+  shuffledDeckIds: string[];
+} {
+  if (templates && templates.length > 0) {
+    return buildScaledDeckFromTemplates(tiles, playerCount, templates);
+  }
+
   const cards: CardDefinition[] = [];
 
   // 1. Cartes Emplacement / Terrain (40 / 55 / 70)

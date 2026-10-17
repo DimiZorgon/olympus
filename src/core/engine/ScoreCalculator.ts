@@ -70,7 +70,6 @@ export function computeEndOfRoundHarvest(
         // Synergies & Malus de Puissance
         if (tile.building.templateId === 'BLD_AQUEDUCT') {
           if (neighbors.some((n) => n.terrain === 'PLAINS')) bPower += 1;
-          uniqueResources.add('WHEAT');
         }
         if (tile.building.templateId === 'BLD_GOLDSMITH') uniqueResources.add('SACRED_GOLD');
         if (tile.building.templateId === 'GOD_03' || tile.building.templateId === 'GOD_09') {

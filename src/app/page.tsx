@@ -28,7 +28,6 @@ const CATEGORY_BADGES: Record<string, { label: string; bg: string }> = {
 export default function OlympusTabletopPage() {
   const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(2);
   const [enableCaprice, setEnableCaprice] = useState(true);
-  const [useGltfAssets, setUseGltfAssets] = useState(false);
 
   const [game, setGame] = useState<GamePublicState | null>(null);
   const [playerId, setPlayerId] = useState<string>('');
@@ -240,16 +239,6 @@ export default function OlympusTabletopPage() {
               />
               Activer le « Caprice des Dieux » à la Manche 3
             </label>
-
-            <label className="flex items-center gap-2.5 text-xs font-medium cursor-pointer text-[#684C26]">
-              <input
-                type="checkbox"
-                checked={useGltfAssets}
-                onChange={(e) => setUseGltfAssets(e.target.checked)}
-                className="h-4 w-4 accent-[#684C26]"
-              />
-              Activer les modèles 3D KayKit (.gltf)
-            </label>
           </div>
 
           <Button
@@ -345,7 +334,6 @@ export default function OlympusTabletopPage() {
           primaryCoord={primaryCoord}
           secondaryCoord={secondaryCoord}
           hoveredCoord={hoveredCard?.targetCoord}
-          useGltfAssets={useGltfAssets}
           onSelectPrimary={setPrimaryCoord}
           onSelectSecondary={setSecondaryCoord}
         />

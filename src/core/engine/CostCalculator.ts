@@ -56,8 +56,7 @@ export function computePlayerResourcePool(
       if (tile.terrain === 'SEA') counts.FISH++;
     }
 
-    // 2. Production ajoutée par le bâtiment (Aqueduc, Orfèvre, Artémis, Dionysos)
-    if (tile.building?.templateId === 'BLD_AQUEDUCT') counts.WHEAT++;
+    // 2. Production ajoutée par le bâtiment (Orfèvre, Artémis, Dionysos)
     if (tile.building?.templateId === 'BLD_GOLDSMITH') counts.SACRED_GOLD++;
     if (tile.building?.templateId === 'GOD_03' || tile.building?.templateId === 'GOD_09') {
       counts.VINE++;

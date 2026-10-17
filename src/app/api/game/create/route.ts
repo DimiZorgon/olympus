@@ -18,8 +18,21 @@ export async function POST(req: Request) {
     // 1. Générer l'île procédurale (40, 55 ou 70 tuiles)
     const tiles = generateProceduralIsland(playerCount);
 
-    // 2. Générer le paquet de cartes exact (72, 108 ou 144 cartes)
-    const { allCardsMap, shuffledDeckIds } = buildScaledDeck(tiles, playerCount);
+    // 2. Récupérer les modèles de cartes depuis Supabase (table card_templates)
+    const { data: dbTemplates, error: templatesErr } = await supabase
+      .from('card_templates')
+      .select('*');
+
+    if (templatesErr) {
+      console.warn('Erreur lecture card_templates Supabase, utilisation repli :', templatesErr.message);
+    }
+
+    // 3. Générer le paquet de cartes exact (72, 108 ou 144 cartes)
+    const { allCardsMap, shuffledDeckIds } = buildScaledDeck(
+      tiles,
+      playerCount,
+      dbTemplates && dbTemplates.length > 0 ? dbTemplates : undefined
+    );
 
     // 3. Initialiser les Dieux Majeurs selon le nombre de joueurs
     const majorGods: Record<MajorGodId, MajorGodState> = {
