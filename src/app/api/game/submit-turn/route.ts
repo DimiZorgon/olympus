@@ -6,6 +6,8 @@ import {
   resolveSimultaneousTurn,
 } from '@/core/engine/TurnResolver';
 import { computeBotTurnSubmission } from '@/core/bot/OlympusBot';
+import { computeEndOfRoundHarvest } from '@/core/engine/ScoreCalculator';
+import { computePlayerFiefsLiveSummary } from '@/core/map/FiefAnalyzer';
 import { CardDefinition, GamePublicState, TurnSubmission } from '@/core/types/game.types';
 
 export async function POST(req: Request) {
@@ -22,6 +24,8 @@ export async function POST(req: Request) {
     if (gErr || !gameData) throw new Error('Partie introuvable');
 
     const game = gameData as GamePublicState;
+    const wasTurn6 = game.current_turn === 6;
+    const finishedRoundNumber = game.current_round;
 
     // 1. Enregistrer le coup du joueur humain
     await supabase
@@ -32,7 +36,7 @@ export async function POST(req: Request) {
 
     game.players_public[submission.playerId].isReady = true;
 
-    // 2. Récupérer toutes les mains et le catalogue du serveur
+    // 2. Récupérer toutes les mains et le catalogue
     const { data: allHandsRows } = await supabase
       .from('player_private_hands')
       .select('*')
@@ -68,9 +72,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Vérifier si TOUS les joueurs ont validé leur tour (Barrière de synchronisation)
     const allReady = Object.values(game.players_public).every((p) => p.isReady);
-
     if (!allReady) {
       await supabase
         .from('games')
@@ -79,11 +81,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'WAITING_FOR_OTHERS' });
     }
 
-    // 5. Résoudre le tour simultané !
+    // 4. Résoudre le tour simultané
     const resolution = resolveSimultaneousTurn(game, privateHandsMap, allCardsMap, {
       round2: round2Ids,
       round3: round3Ids,
     });
+
+    // 5. Si c'était le Tour 6, construire le récapitulatif détaillé de fin de manche pour la modale UI
+    const roundHarvestSummary = wasTurn6
+      ? {
+          roundNumber: finishedRoundNumber,
+          playersBreakdown: Object.values(resolution.updatedGame.players_public).map((p) => {
+            const harvest = computeEndOfRoundHarvest(
+              resolution.updatedGame.board_tiles,
+              p,
+              game.active_caprice_id
+            );
+            const fiefs = computePlayerFiefsLiveSummary(
+              resolution.updatedGame.board_tiles,
+              p.id
+            );
+            return {
+              playerId: p.id,
+              playerName: p.name,
+              fiefsCount: fiefs.length,
+              fiefsDetails: fiefs.map((f) => ({
+                coords: f.tileCoords.join(', '),
+                resourcesCount: f.uniqueResources.length,
+                power: f.totalPower,
+                points: f.harvestScore,
+              })),
+              roundPoints: harvest.fiefPoints,
+              drachmasEarned: harvest.drachmasEarned,
+              newTotalScore: p.totalScore,
+              newDrachmas: p.drachmas,
+              olympusFavor: p.olympusFavor,
+            };
+          }),
+        }
+      : null;
 
     await supabase
       .from('games')
@@ -124,6 +160,7 @@ export async function POST(req: Request) {
       myHand: resolution.updatedHands[submission.playerId].hand_card_ids,
       myReserve: resolution.updatedHands[submission.playerId].reserve_card_ids,
       events: resolution.turnEvents,
+      roundHarvestSummary,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur résolution du tour';

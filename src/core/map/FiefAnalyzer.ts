@@ -1,6 +1,6 @@
 // src/core/map/FiefAnalyzer.ts
-import { HexTile } from '../types/game.types';
-import { getNeighbors, getPlayerConnectedFiefs, hexDistance, HEX_DIRECTIONS } from './HexMath';
+import { HexTile, ResourceType } from '../types/game.types';
+import { getNeighbors, getPlayerConnectedFiefs, HEX_DIRECTIONS } from './HexMath';
 
 export interface Point2D {
   x: number;
@@ -14,143 +14,157 @@ export interface HexEdge {
 
 export interface FiefSvgBoundary {
   fiefIndex: number;
-  playerId: string;
   pathData: string;
+  edges: HexEdge[];
 }
 
-const SQRT_3 = Math.sqrt(3);
-
-/**
- * Convertit des coordonnées axiales (q, r) en coordonnées cartésiennes 2D (pointy-topped)
- */
-export function axialToPixel(q: number, r: number, size: number = 32): Point2D {
-  const x = size * (SQRT_3 * q + (SQRT_3 / 2) * r);
-  const y = size * (3 / 2) * r;
-  return { x, y };
+export interface FiefLiveSummary {
+  fiefIndex: number;
+  tileCoords: string[];
+  centerTileCoord: string;
+  uniqueResources: ResourceType[];
+  totalPower: number;
+  harvestScore: number; // uniqueResources.length * totalPower
+  edges3D: Array<{ x1: number; z1: number; x2: number; z2: number }>;
 }
 
-/**
- * Calcule les 6 sommets d'un hexagone pointy-topped
- */
-export function getHexCorners(center: Point2D, size: number = 32): Point2D[] {
+export const SQRT_3 = Math.sqrt(3);
+
+export function axialToPixel(q: number, r: number, size: number): Point2D {
+  return {
+    x: size * SQRT_3 * (q + r / 2),
+    y: size * (3 / 2) * r,
+  };
+}
+
+export function getHexCorners(center: Point2D, size: number): Point2D[] {
   const corners: Point2D[] = [];
   for (let i = 0; i < 6; i++) {
-    const angleDeg = 60 * i - 30;
-    const angleRad = (Math.PI / 180) * angleDeg;
+    const angleRad = (Math.PI / 180) * (60 * i - 30);
     corners.push({
-      x: Math.round((center.x + size * Math.cos(angleRad)) * 100) / 100,
-      y: Math.round((center.y + size * Math.sin(angleRad)) * 100) / 100,
+      x: center.x + size * Math.cos(angleRad),
+      y: center.y + size * Math.sin(angleRad),
     });
   }
   return corners;
 }
 
-/**
- * Associe chaque direction HEX_DIRECTIONS aux 2 sommets correspondants de l'arête
- */
-const DIRECTION_TO_CORNERS: Array<[number, number]> = [
-  [0, 1], // [1, 0]
-  [5, 0], // [1, -1]
-  [4, 5], // [0, -1]
-  [3, 4], // [-1, 0]
-  [2, 3], // [-1, 1]
-  [1, 2], // [0, 1]
+export const DIRECTION_TO_CORNERS: Array<[number, number]> = [
+  [0, 1],
+  [5, 0],
+  [4, 5],
+  [3, 4],
+  [2, 3],
+  [1, 2],
 ];
 
-/**
- * Calcule les contours de frontières extérieures d'un Fief (Cité unifiée)
- */
 export function computeFiefSvgBoundaries(
   tiles: HexTile[],
   playerId: string,
-  hexSize: number = 32
+  hexSize: number
 ): FiefSvgBoundary[] {
   const fiefs = getPlayerConnectedFiefs(tiles, playerId);
-  const tileMap = new Map<string, HexTile>(tiles.map((t) => [t.coord, t]));
-  const boundaries: FiefSvgBoundary[] = [];
+  const tileMap = new Map<string, HexTile>();
+  tiles.forEach((t) => tileMap.set(`${t.q},${t.r}`, t));
 
-  fiefs.forEach((fief, fiefIndex) => {
-    const fiefCoords = new Set(fief.map((t) => t.coord));
-    const exteriorEdges: HexEdge[] = [];
+  return fiefs.map((fief, fiefIndex) => {
+    const edges: HexEdge[] = [];
+    const pathSegments: string[] = [];
 
     for (const tile of fief) {
       const center = axialToPixel(tile.q, tile.r, hexSize);
       const corners = getHexCorners(center, hexSize);
 
-      HEX_DIRECTIONS.forEach((dir, dirIndex) => {
-        const neighborQ = tile.q + dir[0];
-        const neighborR = tile.r + dir[1];
-        const neighborTile = tiles.find((t) => t.q === neighborQ && t.r === neighborR);
+      HEX_DIRECTIONS.forEach(([dq, dr], dirIdx) => {
+        const neighbor = tileMap.get(`${tile.q + dq},${tile.r + dr}`);
+        if (!neighbor || neighbor.ownerId !== playerId) {
+          const [c1, c2] = DIRECTION_TO_CORNERS[dirIdx];
+          const start = corners[c1];
+          const end = corners[c2];
+          edges.push({ start, end });
+          pathSegments.push(`M ${start.x.toFixed(1)} ${start.y.toFixed(1)} L ${end.x.toFixed(1)} ${end.y.toFixed(1)}`);
+        }
+      });
+    }
 
-        // Si le voisin n'appartient pas au Fief, l'arête est extérieure
-        if (!neighborTile || !fiefCoords.has(neighborTile.coord)) {
-          const [c1Idx, c2Idx] = DIRECTION_TO_CORNERS[dirIndex];
-          exteriorEdges.push({
-            start: corners[c1Idx],
-            end: corners[c2Idx],
+    return {
+      fiefIndex,
+      pathData: pathSegments.join(' '),
+      edges,
+    };
+  });
+}
+
+/**
+ * Calcule le résumé en direct de chaque Cité (Fief) d'un joueur façon Bunny Kingdom :
+ * (Nombre de ressources différentes x Puissance totale des bâtiments) + segments de frontière 3D
+ */
+export function computePlayerFiefsLiveSummary(
+  tiles: HexTile[],
+  playerId: string,
+  hexRadius3D: number = 1.05
+): FiefLiveSummary[] {
+  const fiefs = getPlayerConnectedFiefs(tiles, playerId);
+  const tileMap = new Map<string, HexTile>();
+  tiles.forEach((t) => tileMap.set(`${t.q},${t.r}`, t));
+
+  return fiefs.map((fief, fiefIndex) => {
+    const resources = new Set<ResourceType>();
+    let totalPower = 0;
+    const edges3D: Array<{ x1: number; z1: number; x2: number; z2: number }> = [];
+
+    for (const tile of fief) {
+      if (tile.terrain === 'PLAINS') resources.add('WHEAT');
+      if (tile.terrain === 'FOREST') resources.add('WOOD');
+      if (tile.terrain === 'RIVER') resources.add('CLAY');
+      if (tile.terrain === 'MOUNTAIN_MARBLE') resources.add('MARBLE');
+      if (tile.terrain === 'MOUNTAIN_BRONZE') resources.add('BRONZE');
+      if (tile.terrain === 'SEA') resources.add('FISH');
+      if (tile.terrain === 'SANCTUARY') totalPower += 1;
+
+      if (tile.building && !tile.building.isSecondaryHalf) {
+        totalPower += tile.building.power;
+        if (tile.building.templateId === 'BLD_AQUEDUCT') {
+          resources.add('WHEAT');
+          if (getNeighbors(tiles, tile).some((n) => n.terrain === 'PLAINS')) totalPower += 1;
+        }
+        if (tile.building.templateId === 'BLD_GOLDSMITH') resources.add('SACRED_GOLD');
+        if (tile.building.templateId === 'GOD_03' || tile.building.templateId === 'GOD_09') {
+          resources.add('VINE');
+        }
+      }
+
+      for (const buff of tile.activeBrownBuffs) {
+        if (buff.addedResource) resources.add(buff.addedResource);
+        if (buff.addedPower) totalPower += buff.addedPower;
+      }
+
+      // Calcul des arêtes extérieures en coordonnées 3D
+      const center = axialToPixel(tile.q, tile.r, hexRadius3D);
+      const corners = getHexCorners(center, hexRadius3D * 0.98);
+      HEX_DIRECTIONS.forEach(([dq, dr], dirIdx) => {
+        const neighbor = tileMap.get(`${tile.q + dq},${tile.r + dr}`);
+        if (!neighbor || neighbor.ownerId !== playerId) {
+          const [c1, c2] = DIRECTION_TO_CORNERS[dirIdx];
+          edges3D.push({
+            x1: corners[c1].x,
+            z1: corners[c1].y,
+            x2: corners[c2].x,
+            z2: corners[c2].y,
           });
         }
       });
     }
 
-    if (exteriorEdges.length === 0) return;
-
-    // Chaînage des arêtes pour former un ou plusieurs polygones fermés
-    const pathSegments: string[] = [];
-    const remainingEdges = [...exteriorEdges];
-
-    while (remainingEdges.length > 0) {
-      const firstEdge = remainingEdges.shift()!;
-      let currentPath = `M ${firstEdge.start.x} ${firstEdge.start.y} L ${firstEdge.end.x} ${firstEdge.end.y}`;
-      let currentEnd = firstEdge.end;
-      const startPoint = firstEdge.start;
-
-      let loopLimit = 200;
-      while (loopLimit-- > 0) {
-        if (
-          Math.abs(currentEnd.x - startPoint.x) < 0.5 &&
-          Math.abs(currentEnd.y - startPoint.y) < 0.5
-        ) {
-          currentPath += ' Z';
-          break;
-        }
-
-        const nextEdgeIdx = remainingEdges.findIndex(
-          (e) =>
-            Math.abs(e.start.x - currentEnd.x) < 0.5 && Math.abs(e.start.y - currentEnd.y) < 0.5
-        );
-
-        if (nextEdgeIdx !== -1) {
-          const nextEdge = remainingEdges.splice(nextEdgeIdx, 1)[0];
-          currentPath += ` L ${nextEdge.end.x} ${nextEdge.end.y}`;
-          currentEnd = nextEdge.end;
-        } else {
-          // Si l'arête est inversée
-          const revEdgeIdx = remainingEdges.findIndex(
-            (e) =>
-              Math.abs(e.end.x - currentEnd.x) < 0.5 && Math.abs(e.start.y - currentEnd.y) < 0.5
-          );
-          if (revEdgeIdx !== -1) {
-            const revEdge = remainingEdges.splice(revEdgeIdx, 1)[0];
-            currentPath += ` L ${revEdge.start.x} ${revEdge.start.y}`;
-            currentEnd = revEdge.start;
-          } else {
-            currentPath += ' Z';
-            break;
-          }
-        }
-      }
-
-      pathSegments.push(currentPath);
-    }
-
-    boundaries.push({
+    const uniqueResources = Array.from(resources);
+    return {
       fiefIndex,
-      playerId,
-      pathData: pathSegments.join(' '),
-    });
+      tileCoords: fief.map((t) => t.coord),
+      centerTileCoord: fief[0]?.coord || 'A1',
+      uniqueResources,
+      totalPower,
+      harvestScore: uniqueResources.length * totalPower,
+      edges3D,
+    };
   });
-
-  return boundaries;
 }
-
